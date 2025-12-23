@@ -90,7 +90,9 @@ async fn capture_snapshot(shell: &Shell) -> Result<String> {
         ShellType::Bash => run_shell_script(shell, bash_snapshot_script()).await,
         ShellType::Sh => run_shell_script(shell, sh_snapshot_script()).await,
         ShellType::PowerShell => run_shell_script(shell, powershell_snapshot_script()).await,
-        ShellType::Cmd => bail!("Shell snapshotting is not yet supported for {shell_type:?}"),
+        ShellType::Cmd | ShellType::Fish => {
+            bail!("Shell snapshotting is not yet supported for {shell_type:?}")
+        }
     }
 }
 

@@ -12,6 +12,7 @@ pub enum ShellType {
     PowerShell,
     Sh,
     Cmd,
+    Fish,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -30,6 +31,7 @@ impl Shell {
             ShellType::PowerShell => "powershell",
             ShellType::Sh => "sh",
             ShellType::Cmd => "cmd",
+            ShellType::Fish => "fish",
         }
     }
 
@@ -44,6 +46,15 @@ impl Shell {
                     arg.to_string(),
                     command.to_string(),
                 ]
+            }
+            ShellType::Fish => {
+                let mut args = vec![self.shell_path.to_string_lossy().to_string()];
+                if use_login_shell {
+                    args.push("-l".to_string());
+                }
+                args.push("-c".to_string());
+                args.push(command.to_string());
+                args
             }
             ShellType::PowerShell => {
                 let mut args = vec![self.shell_path.to_string_lossy().to_string()];
@@ -67,6 +78,13 @@ impl Shell {
 
 #[cfg(unix)]
 fn get_user_shell_path() -> Option<PathBuf> {
+    if let Ok(shell) = std::env::var("SHELL") {
+        let shell_path = PathBuf::from(shell);
+        if file_exists(&shell_path).is_some() {
+            return Some(shell_path);
+        }
+    }
+
     use libc::getpwuid;
     use libc::getuid;
     use std::ffi::CStr;
@@ -88,6 +106,13 @@ fn get_user_shell_path() -> Option<PathBuf> {
 
 #[cfg(not(unix))]
 fn get_user_shell_path() -> Option<PathBuf> {
+    if let Ok(shell) = std::env::var("SHELL") {
+        let shell_path = PathBuf::from(shell);
+        if file_exists(&shell_path).is_some() {
+            return Some(shell_path);
+        }
+    }
+
     None
 }
 
@@ -131,6 +156,21 @@ fn get_shell_path(
     }
 
     None
+}
+
+fn get_fish_shell(path: Option<&PathBuf>) -> Option<Shell> {
+    let shell_path = get_shell_path(
+        ShellType::Fish,
+        path,
+        "fish",
+        vec!["/opt/homebrew/bin/fish", "/usr/bin/fish", "/bin/fish"],
+    );
+
+    shell_path.map(|shell_path| Shell {
+        shell_type: ShellType::Fish,
+        shell_path,
+        shell_snapshot: None,
+    })
 }
 
 fn get_zsh_shell(path: Option<&PathBuf>) -> Option<Shell> {
@@ -218,6 +258,7 @@ pub fn get_shell(shell_type: ShellType, path: Option<&PathBuf>) -> Option<Shell>
         ShellType::PowerShell => get_powershell_shell(path),
         ShellType::Sh => get_sh_shell(path),
         ShellType::Cmd => get_cmd_shell(path),
+        ShellType::Fish => get_fish_shell(path),
     }
 }
 
@@ -228,6 +269,7 @@ pub fn detect_shell_type(shell_path: &PathBuf) -> Option<ShellType> {
         Some("cmd") => Some(ShellType::Cmd),
         Some("bash") => Some(ShellType::Bash),
         Some("pwsh") => Some(ShellType::PowerShell),
+        Some("fish") => Some(ShellType::Fish),
         Some("powershell") => Some(ShellType::PowerShell),
         _ => {
             let shell_name = shell_path.file_stem();
@@ -256,12 +298,14 @@ fn default_user_shell_from_path(user_shell_path: Option<PathBuf>) -> Shell {
 
         let shell_with_fallback = if cfg!(target_os = "macos") {
             user_default_shell
+                .or_else(|| get_shell(ShellType::Fish, None))
                 .or_else(|| get_shell(ShellType::Zsh, None))
                 .or_else(|| get_shell(ShellType::Bash, None))
         } else {
             user_default_shell
                 .or_else(|| get_shell(ShellType::Bash, None))
                 .or_else(|| get_shell(ShellType::Zsh, None))
+                .or_else(|| get_shell(ShellType::Fish, None))
         };
 
         shell_with_fallback.unwrap_or(ultimate_fallback_shell())
@@ -290,7 +334,10 @@ mod detect_shell_type_tests {
             detect_shell_type(&PathBuf::from("powershell")),
             Some(ShellType::PowerShell)
         );
-        assert_eq!(detect_shell_type(&PathBuf::from("fish")), None);
+        assert_eq!(
+            detect_shell_type(&PathBuf::from("fish")),
+            Some(ShellType::Fish)
+        );
         assert_eq!(detect_shell_type(&PathBuf::from("other")), None);
         assert_eq!(
             detect_shell_type(&PathBuf::from("/bin/zsh")),
@@ -355,12 +402,17 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn fish_fallback_to_zsh() {
-        let zsh_shell = default_user_shell_from_path(Some(PathBuf::from("/bin/fish")));
+    fn detects_fish() {
+        let fish_shell = get_shell(ShellType::Fish, None).unwrap();
 
-        let shell_path = zsh_shell.shell_path;
+        let shell_path = fish_shell.shell_path;
 
-        assert_eq!(shell_path, PathBuf::from("/bin/zsh"));
+        assert!(
+            shell_path == PathBuf::from("/opt/homebrew/bin/fish")
+                || shell_path == PathBuf::from("/usr/bin/fish")
+                || shell_path == PathBuf::from("/bin/fish"),
+            "shell path: {shell_path:?}",
+        );
     }
 
     #[test]
@@ -402,6 +454,7 @@ mod tests {
             assert!(shell_works(get_shell(ShellType::Zsh, None), cmd, false));
             assert!(shell_works(get_shell(ShellType::Bash, None), cmd, true));
             assert!(shell_works(get_shell(ShellType::Sh, None), cmd, true));
+            assert!(shell_works(get_shell(ShellType::Fish, None), cmd, false));
         }
     }
 
@@ -448,6 +501,20 @@ mod tests {
         assert_eq!(
             test_zsh_shell.derive_exec_args("echo hello", true),
             vec!["/bin/zsh", "-lc", "echo hello"]
+        );
+
+        let test_fish_shell = Shell {
+            shell_type: ShellType::Fish,
+            shell_path: PathBuf::from("/bin/fish"),
+            shell_snapshot: None,
+        };
+        assert_eq!(
+            test_fish_shell.derive_exec_args("echo hello", false),
+            vec!["/bin/fish", "-c", "echo hello"]
+        );
+        assert_eq!(
+            test_fish_shell.derive_exec_args("echo hello", true),
+            vec!["/bin/fish", "-l", "-c", "echo hello"]
         );
 
         let test_powershell_shell = Shell {
