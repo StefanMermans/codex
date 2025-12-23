@@ -95,18 +95,21 @@ pub fn try_parse_word_only_commands_sequence(tree: &Tree, src: &str) -> Option<V
 }
 
 pub fn extract_bash_command(command: &[String]) -> Option<(&str, &str)> {
-    let [shell, flag, script] = command else {
-        return None;
-    };
-    if !matches!(flag.as_str(), "-lc" | "-c")
-        || !matches!(
-            detect_shell_type(&PathBuf::from(shell)),
-            Some(ShellType::Zsh) | Some(ShellType::Bash) | Some(ShellType::Sh)
-        )
-    {
-        return None;
+    match command {
+        [shell, flag, script]
+            if matches!(flag.as_str(), "-lc" | "-c")
+                && matches!(
+                    detect_shell_type(&PathBuf::from(shell)),
+                    Some(ShellType::Zsh)
+                        | Some(ShellType::Bash)
+                        | Some(ShellType::Sh)
+                        | Some(ShellType::Fish)
+                ) =>
+        {
+            Some((shell, script))
+        }
+        _ => None,
     }
-    Some((shell, script))
 }
 
 /// Returns the sequence of plain commands within a `bash -lc "..."` or

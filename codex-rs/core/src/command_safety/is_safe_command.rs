@@ -2,16 +2,7 @@ use crate::bash::parse_shell_lc_plain_commands;
 use crate::command_safety::windows_safe_commands::is_safe_command_windows;
 
 pub fn is_known_safe_command(command: &[String]) -> bool {
-    let command: Vec<String> = command
-        .iter()
-        .map(|s| {
-            if s == "zsh" {
-                "bash".to_string()
-            } else {
-                s.clone()
-            }
-        })
-        .collect();
+    let command: Vec<String> = command.to_vec();
 
     if is_safe_command_windows(&command) {
         return true;
@@ -229,6 +220,13 @@ mod tests {
             assert!(!is_safe_to_call_with_exec(&vec_str(&["numfmt", "1000"])));
             assert!(!is_safe_to_call_with_exec(&vec_str(&["tac", "Cargo.toml"])));
         }
+
+        assert!(is_known_safe_command(&vec_str(&["fish", "-c", "ls"])));
+    }
+
+    #[test]
+    fn fish_login_safe_command_sequence() {
+        assert!(is_known_safe_command(&vec_str(&["fish", "-lc", "ls"])));
     }
 
     #[test]

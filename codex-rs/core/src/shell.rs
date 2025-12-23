@@ -39,22 +39,13 @@ impl Shell {
     /// use with `exec()` to run the shell command.
     pub fn derive_exec_args(&self, command: &str, use_login_shell: bool) -> Vec<String> {
         match self.shell_type {
-            ShellType::Zsh | ShellType::Bash | ShellType::Sh => {
+            ShellType::Zsh | ShellType::Bash | ShellType::Sh | ShellType::Fish => {
                 let arg = if use_login_shell { "-lc" } else { "-c" };
                 vec![
                     self.shell_path.to_string_lossy().to_string(),
                     arg.to_string(),
                     command.to_string(),
                 ]
-            }
-            ShellType::Fish => {
-                let mut args = vec![self.shell_path.to_string_lossy().to_string()];
-                if use_login_shell {
-                    args.push("-l".to_string());
-                }
-                args.push("-c".to_string());
-                args.push(command.to_string());
-                args
             }
             ShellType::PowerShell => {
                 let mut args = vec![self.shell_path.to_string_lossy().to_string()];
@@ -507,7 +498,7 @@ mod tests {
         );
         assert_eq!(
             test_fish_shell.derive_exec_args("echo hello", true),
-            vec!["/bin/fish", "-l", "-c", "echo hello"]
+            vec!["/bin/fish", "-lc", "echo hello"]
         );
 
         let test_powershell_shell = Shell {
