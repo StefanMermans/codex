@@ -106,13 +106,6 @@ fn get_user_shell_path() -> Option<PathBuf> {
 
 #[cfg(not(unix))]
 fn get_user_shell_path() -> Option<PathBuf> {
-    if let Ok(shell) = std::env::var("SHELL") {
-        let shell_path = PathBuf::from(shell);
-        if file_exists(&shell_path).is_some() {
-            return Some(shell_path);
-        }
-    }
-
     None
 }
 
