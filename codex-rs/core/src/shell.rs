@@ -282,9 +282,9 @@ fn default_user_shell_from_path(user_shell_path: Option<PathBuf>) -> Shell {
 
         let shell_with_fallback = if cfg!(target_os = "macos") {
             user_default_shell
-                .or_else(|| get_shell(ShellType::Fish, None))
                 .or_else(|| get_shell(ShellType::Zsh, None))
                 .or_else(|| get_shell(ShellType::Bash, None))
+                .or_else(|| get_shell(ShellType::Fish, None))
         } else {
             user_default_shell
                 .or_else(|| get_shell(ShellType::Bash, None))
